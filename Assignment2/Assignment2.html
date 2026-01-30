@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>SVG Drawing Box</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600&display=swap" rel="stylesheet">
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background: linear-gradient(135deg, #0f0c29, #302b63, #24243e);
+            font-family: 'Outfit', sans-serif;
+            color: #fff;
+        }
+
+        h1 {
+            font-weight: 600;
+            margin-bottom: 8px;
+            letter-spacing: 0.5px;
+            text-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+        }
+
+        p.hint {
+            margin-bottom: 24px;
+            color: #a8b2d1;
+            font-size: 0.95rem;
+            font-weight: 300;
+        }
+
+        svg {
+            background: #ffffff;
+            border-radius: 16px;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+            cursor: crosshair;
+            transition: all 0.3s ease;
+        }
+
+        svg:hover {
+            box-shadow: 0 30px 60px rgba(0, 0, 0, 0.6);
+            transform: translateY(-2px);
+        }
+
+        .toolbar {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            padding: 10px 20px;
+            border-radius: 12px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .actions {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            border-left: 1px solid rgba(255, 255, 255, 0.3);
+            padding-left: 12px;
+            margin-left: 12px;
+        }
+
+        input[type="color"] {
+            -webkit-appearance: none;
+            -moz-appearance: none;
+            appearance: none;
+            border: none;
+            width: 32px;
+            height: 32px;
+            cursor: pointer;
+            background: none;
+        }
+
+        input[type="color"]::-webkit-color-swatch-wrapper {
+            padding: 0;
+        }
+
+        input[type="color"]::-webkit-color-swatch {
+            border: 1px solid rgba(255, 255, 255, 0.5);
+            border-radius: 4px;
+        }
+
+        input[type="range"] {
+            width: 80px;
+            height: 4px;
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: 2px;
+            -webkit-appearance: none;
+            -moz-appearance: none;
+            appearance: none;
+            outline: none;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 12px;
+            height: 12px;
+            background: #fff;
+            border-radius: 50%;
+            cursor: pointer;
+        }
+
+        .tool-btn {
+            background: transparent;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: #fff;
+            padding: 8px 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-family: 'Outfit', sans-serif;
+            font-weight: 400;
+            transition: all 0.2s ease;
+        }
+
+        .tool-btn:hover {
+            background: rgba(255, 255, 255, 0.1);
+            border-color: #fff;
+        }
+
+        .tool-btn.active {
+            background: #fff;
+            color: #000;
+            border-color: #fff;
+            font-weight: 600;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>Digital Blackboard</h1>
+    <p class="hint">Select a tool and click & drag to sketch</p>
+
+    <div class="toolbar">
+        <button class="tool-btn active" data-tool="pencil">Pencil</button>
+        <button class="tool-btn" data-tool="line">Line</button>
+        <button class="tool-btn" data-tool="rect">Rectangle</button>
+        <button class="tool-btn" data-tool="ellipse">Circle</button>
+        <button class="tool-btn" id="undoBtn">Undo</button>
+
+        <div class="actions">
+            <input type="color" id="colorPicker" value="#0074D9" title="Stroke Color">
+            <input type="range" id="widthSlider" min="1" max="20" value="2" title="Stroke Width">
+            <button class="tool-btn" id="clearBtn">Clear</button>
+        </div>
+    </div>
+
+    <svg id="drawingArea" width="600" height="400"></svg>
+
+    <script>
+        const svg = document.getElementById("drawingArea");
+        const toolBtns = document.querySelectorAll(".tool-btn[data-tool]");
+        const undoBtn = document.getElementById("undoBtn");
+        const clearBtn = document.getElementById("clearBtn");
+        const colorPicker = document.getElementById("colorPicker");
+        const widthSlider = document.getElementById("widthSlider");
+
+        let drawing = false;
+        let currentShape = null;
+        let startX, startY;
+        let currentTool = 'pencil';
+        let shapeHistory = [];
+
+        // Tool selection logic
+        toolBtns.forEach(btn => {
+            btn.addEventListener("click", () => {
+                toolBtns.forEach(b => b.classList.remove("active"));
+                btn.classList.add("active");
+                currentTool = btn.dataset.tool;
+            });
+        });
+
+
+        undoBtn.addEventListener("click", () => {
+            if (shapeHistory.length > 0) {
+                const lastShape = shapeHistory.pop();
+                svg.removeChild(lastShape);
+            }
+        });
+
+
+        clearBtn.addEventListener("click", () => {
+            while (svg.firstChild) {
+                svg.removeChild(svg.firstChild);
+            }
+            shapeHistory = [];
+        });
+
+        svg.addEventListener("mousedown", (e) => {
+            drawing = true;
+            const pos = getMousePosition(e);
+            startX = pos.x;
+            startY = pos.y;
+
+            if (currentTool === 'pencil') {
+                currentShape = createPath(startX, startY);
+            } else if (currentTool === 'line') {
+                currentShape = createLine(startX, startY, startX, startY);
+            } else if (currentTool === 'rect') {
+                currentShape = createRect(startX, startY, 0, 0);
+            } else if (currentTool === 'ellipse') {
+                currentShape = createEllipse(startX, startY, 0, 0);
+            }
+
+            svg.appendChild(currentShape);
+        });
+
+        svg.addEventListener("mousemove", (e) => {
+            if (!drawing || !currentShape) return;
+            const { x, y } = getMousePosition(e);
+
+            if (currentTool === 'pencil') {
+                const d = currentShape.getAttribute("d");
+                currentShape.setAttribute("d", `${d} L ${x} ${y}`);
+            } else if (currentTool === 'line') {
+                currentShape.setAttribute("x2", x);
+                currentShape.setAttribute("y2", y);
+            } else if (currentTool === 'rect') {
+                const width = Math.abs(x - startX);
+                const height = Math.abs(y - startY);
+                const newX = Math.min(x, startX);
+                const newY = Math.min(y, startY);
+
+                currentShape.setAttribute("x", newX);
+                currentShape.setAttribute("y", newY);
+                currentShape.setAttribute("width", width);
+                currentShape.setAttribute("height", height);
+            } else if (currentTool === 'ellipse') {
+                const rx = Math.abs(x - startX) / 2;
+                const ry = Math.abs(y - startY) / 2;
+                const cx = (startX + x) / 2;
+                const cy = (startY + y) / 2;
+
+                currentShape.setAttribute("cx", cx);
+                currentShape.setAttribute("cy", cy);
+                currentShape.setAttribute("rx", rx);
+                currentShape.setAttribute("ry", ry);
+            }
+        });
+
+        svg.addEventListener("mouseup", () => {
+            drawing = false;
+            if (currentShape) {
+                shapeHistory.push(currentShape);
+                currentShape = null;
+            }
+        });
+
+        function getMousePosition(evt) {
+            const rect = svg.getBoundingClientRect();
+            return {
+                x: evt.clientX - rect.left,
+                y: evt.clientY - rect.top
+            };
+        }
+
+        function createPath(x, y) {
+            const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+            path.setAttribute("d", `M ${x} ${y}`);
+            path.setAttribute("fill", "none");
+            setCommonAttributes(path);
+            return path;
+        }
+
+        function createLine(x1, y1, x2, y2) {
+            const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+            line.setAttribute("x1", x1);
+            line.setAttribute("y1", y1);
+            line.setAttribute("x2", x2);
+            line.setAttribute("y2", y2);
+            setCommonAttributes(line);
+            return line;
+        }
+
+        function createRect(x, y, w, h) {
+            const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+            rect.setAttribute("x", x);
+            rect.setAttribute("y", y);
+            rect.setAttribute("width", w);
+            rect.setAttribute("height", h);
+            rect.setAttribute("fill", "transparent");
+            setCommonAttributes(rect);
+            return rect;
+        }
+
+        function createEllipse(cx, cy, rx, ry) {
+            const ellipse = document.createElementNS("http://www.w3.org/2000/svg", "ellipse");
+            ellipse.setAttribute("cx", cx);
+            ellipse.setAttribute("cy", cy);
+            ellipse.setAttribute("rx", rx);
+            ellipse.setAttribute("ry", ry);
+            ellipse.setAttribute("fill", "transparent");
+            setCommonAttributes(ellipse);
+            return ellipse;
+        }
+
+        function setCommonAttributes(shape) {
+            shape.setAttribute("stroke", colorPicker.value);
+            shape.setAttribute("stroke-width", widthSlider.value);
+            shape.setAttribute("stroke-linecap", "round");
+        }
+    </script>
+
+</body>
+
+</html>
